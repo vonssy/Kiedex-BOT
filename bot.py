@@ -642,6 +642,7 @@ class KieDex:
 
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers, json=payload, proxy=proxy, proxy_auth=proxy_auth) as response:
+                        print(f"{response.status}:{await response.text()}")
                         await self.enusre_ok(response)
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -893,7 +894,7 @@ class KieDex:
                         continue
 
                     self.log(
-                        f"{Fore.CYAN+Style.BRIGHT}Account:{Style.RESET_ALL}"
+                        f"{Fore.CYAN+Style.BRIGHT}Account :{Style.RESET_ALL}"
                         f"{Fore.WHITE+Style.BRIGHT} {self.mask_account(email)} {Style.RESET_ALL}"
                     )
 
