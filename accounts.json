@@ -1,0 +1,12 @@
+[
+    {
+        "email": "your_email_address_1",
+        "access_token": "access_token",
+        "refresh_token": "refresh_token"
+    },
+    {
+        "email": "your_email_address_2",
+        "access_token": "access_token",
+        "refresh_token": "refresh_token"
+    }
+]
