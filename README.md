@@ -34,6 +34,7 @@ KieDex BOT is an automated tool designed to airdrop farming across multiple acco
 - 🚰 **Daily Faucet** - Automated claim daily USDT faucet
 - ⛽ **Daily Bonus** - Automated claim daily OIL
 - 📝 **Complete Tasks** - Automated complete available tasks
+- 📈 **Open Position** - Automated trade in BTC/USDT
 - 👥 **Multi-Account Support** - Manage multiple accounts simultaneously
 
 ## 📋 Requirements

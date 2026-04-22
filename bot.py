@@ -245,6 +245,18 @@ class KieDex:
 
         return "".join(username)
 
+    def generate_trade_payload(self, margin: int, tp_price: float, sl_price: float):
+        payload = {
+            "symbol": "BTCUSDT",
+            "side": "long",
+            "leverage": 1,
+            "margin": margin,
+            "takeProfitPrice": tp_price,
+            "stopLossPrice": sl_price
+        }
+
+        return payload
+
     def print_question(self):
         while True:
             try:
@@ -622,7 +634,35 @@ class KieDex:
 
         return None
     
-    async def execute_trade(self, email: str, proxy_url=None, retries=5):
+    async def btc_market(self, proxy_url=None, retries=5):
+        url = "https://api.coingecko.com/api/v3/simple/price"
+        
+        for attempt in range(retries):
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
+            try:
+                params = {
+                    "ids": "bitcoin",
+                    "vs_currencies": "usd"
+                }
+
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.get(url=url, params=params, proxy=proxy, proxy_auth=proxy_auth) as response:
+                        await self.enusre_ok(response)
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                self.log(
+                    f"{Fore.BLUE+Style.BRIGHT}   Status  :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Failed to Fetch BTC Market {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
+
+        return None
+    
+    async def execute_trade(self, email: str, payload: dict, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/functions/v1/execute-trade"
         
         for attempt in range(retries):
@@ -631,18 +671,9 @@ class KieDex:
                 headers = self.initialize_headers(email)
                 headers["Authorization"] = f"Bearer {self.accounts[email]['access_token']}"
                 headers["Content-Type"] = "application/json"
-                payload = {
-                    "symbol": "ETHUSDT",
-                    "side": "long",
-                    "leverage": 5,
-                    "margin": 5,
-                    "takeProfitPrice": 2353.29,
-                    "stopLossPrice": 2191.8
-                }
 
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers, json=payload, proxy=proxy, proxy_auth=proxy_auth) as response:
-                        print(f"{response.status}:{await response.text()}")
                         await self.enusre_ok(response)
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -650,7 +681,7 @@ class KieDex:
                     await asyncio.sleep(5)
                     continue
                 self.log(
-                    f"{Fore.BLUE+Style.BRIGHT}   Status:{Style.RESET_ALL}"
+                    f"{Fore.BLUE+Style.BRIGHT}   Status  :{Style.RESET_ALL}"
                     f"{Fore.RED+Style.BRIGHT} Execute Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
@@ -852,6 +883,86 @@ class KieDex:
                         f"{Fore.CYAN+Style.BRIGHT} Reward: {Style.RESET_ALL}"
                         f"{Fore.WHITE+Style.BRIGHT}{reward} {reward_type.upper()}{Style.RESET_ALL}"
                     )
+
+        balances = await self.user_balances(email, proxy_url)
+        if balances:
+            demo_usdt_balance = balances.get("demo_usdt_balance", 0)
+            oil_balance = balances.get("oil_balance", 0)
+
+            self.log(f"{Fore.CYAN+Style.BRIGHT}Trade   :{Style.RESET_ALL}")
+
+            self.log(
+                f"{Fore.BLUE+Style.BRIGHT}   Pairs   :{Style.RESET_ALL}"
+                f"{Fore.WHITE+Style.BRIGHT} BTC/USDT {Style.RESET_ALL}"
+                f"{Fore.GREEN+Style.BRIGHT}(Long){Style.RESET_ALL}"
+            )
+            self.log(f"{Fore.BLUE+Style.BRIGHT}   Balance :{Style.RESET_ALL}")
+            self.log(
+                f"{Fore.MAGENTA+Style.BRIGHT}      1. {Style.RESET_ALL}"
+                f"{Fore.WHITE+Style.BRIGHT}{demo_usdt_balance} USDT{Style.RESET_ALL}"
+            )
+            self.log(
+                f"{Fore.MAGENTA+Style.BRIGHT}      2. {Style.RESET_ALL}"
+                f"{Fore.WHITE+Style.BRIGHT}{oil_balance} OIL{Style.RESET_ALL}"
+            )
+
+            if demo_usdt_balance < 5:
+                self.log(
+                    f"{Fore.BLUE+Style.BRIGHT}   Status  :{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} Insufficient USDT (Min. 5) {Style.RESET_ALL}"
+                )
+                return False
+            
+            if oil_balance < 5:
+                self.log(
+                    f"{Fore.BLUE+Style.BRIGHT}   Status  :{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} Insufficient OIL (Min. 5) {Style.RESET_ALL}"
+                )
+                return False
+            
+            margin = oil_balance
+
+            self.log(
+                f"{Fore.BLUE+Style.BRIGHT}   Margin  :{Style.RESET_ALL}"
+                f"{Fore.WHITE+Style.BRIGHT} {margin} USDT {Style.RESET_ALL}"
+            )
+            self.log(
+                f"{Fore.BLUE+Style.BRIGHT}   Leverage:{Style.RESET_ALL}"
+                f"{Fore.WHITE+Style.BRIGHT} 1x {Style.RESET_ALL}"
+            )
+            self.log(
+                f"{Fore.BLUE+Style.BRIGHT}   Fees    :{Style.RESET_ALL}"
+                f"{Fore.WHITE+Style.BRIGHT} {oil_balance} OIL {Style.RESET_ALL}"
+            )
+        
+            market = await self.btc_market(proxy_url)
+            if market:
+                liq_price = market.get("bitcoin", {}).get("usd")
+                tp_price = liq_price + (liq_price * 0.05)
+                sl_price = liq_price - (liq_price * 0.02)
+
+                self.log(
+                    f"{Fore.BLUE+Style.BRIGHT}   Price   :{Style.RESET_ALL}"
+                    f"{Fore.WHITE+Style.BRIGHT} {liq_price} USDT {Style.RESET_ALL}"
+                )
+                self.log(
+                    f"{Fore.BLUE+Style.BRIGHT}   TP      :{Style.RESET_ALL}"
+                    f"{Fore.WHITE+Style.BRIGHT} {tp_price} USDT (5%) {Style.RESET_ALL}"
+                )
+                self.log(
+                    f"{Fore.BLUE+Style.BRIGHT}   SL      :{Style.RESET_ALL}"
+                    f"{Fore.WHITE+Style.BRIGHT} {sl_price} USDT (2%) {Style.RESET_ALL}"
+                )
+
+                payload = self.generate_trade_payload(margin, tp_price, sl_price)
+
+                execute = await self.execute_trade(email, payload, proxy_url)
+                if execute:
+                    self.log(
+                        f"{Fore.BLUE+Style.BRIGHT}   Status  :{Style.RESET_ALL}"
+                        f"{Fore.GREEN+Style.BRIGHT} Trade Executed {Style.RESET_ALL}"
+                    )
+
         
     async def main(self):
         try:
